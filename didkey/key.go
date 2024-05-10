@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	mb "github.com/multiformats/go-multibase"
 	varint "github.com/multiformats/go-varint"
@@ -22,6 +23,8 @@ const (
 	MulticodecKindRSAPubKey = 0x1205
 	// MulticodecKindEd25519PubKey ed25519-pub
 	MulticodecKindEd25519PubKey = 0xed
+	// MulticodecKindSecp256k1PubKey
+	MulticodecKindSecp256k1PubKey = 0xe7
 )
 
 // ID is a DID:key identifier
@@ -32,7 +35,7 @@ type ID struct {
 // NewID constructs an Identifier from a public key
 func NewID(pub crypto.PubKey) (ID, error) {
 	switch pub.Type() {
-	case crypto.Ed25519, crypto.RSA:
+	case crypto.Ed25519, crypto.RSA, crypto.Secp256k1:
 		return ID{PubKey: pub}, nil
 	default:
 		return ID{}, fmt.Errorf("unsupported key type: %s", pub.Type())
@@ -46,6 +49,8 @@ func (id ID) MulticodecType() uint64 {
 		return MulticodecKindRSAPubKey
 	case crypto.Ed25519:
 		return MulticodecKindEd25519PubKey
+	case crypto.Secp256k1:
+		return MulticodecKindSecp256k1PubKey
 	default:
 		panic("unexpected crypto type")
 	}
@@ -92,6 +97,8 @@ func (id ID) VerifyKey() (interface{}, error) {
 		return verifyKey, nil
 	case crypto.Ed25519:
 		return ed25519.PublicKey(rawPubBytes), nil
+	case crypto.Secp256k1:
+		return secp256k1.ParsePubKey(rawPubBytes)
 	default:
 		return nil, fmt.Errorf("unrecognized Public Key type: %s", id.PubKey.Type())
 	}
@@ -129,6 +136,12 @@ func Parse(keystr string) (ID, error) {
 		return ID{pub}, nil
 	case MulticodecKindEd25519PubKey:
 		pub, err := crypto.UnmarshalEd25519PublicKey(data[n:])
+		if err != nil {
+			return id, err
+		}
+		return ID{pub}, nil
+	case MulticodecKindSecp256k1PubKey:
+		pub, err := crypto.UnmarshalSecp256k1PublicKey(data[n:])
 		if err != nil {
 			return id, err
 		}

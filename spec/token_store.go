@@ -9,7 +9,7 @@ package spec
 // 	"github.com/google/go-cmp/cmp"
 // 	cfgtest "github.com/qri-io/qri/config/test"
 // 	"github.com/qri-io/qri/repo/profile"
-// 	"github.com/ucan-wg/go-ucan"
+// 	"github.com/selesy/go-ucan"
 // )
 
 // // AssertTokenStoreSpec ensures an ucan.TokenStore implementation behaves as

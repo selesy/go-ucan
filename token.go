@@ -17,11 +17,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/golang-jwt/jwt"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p-core/crypto"
+	corecrypto "github.com/libp2p/go-libp2p/core/crypto"
 	mh "github.com/multiformats/go-multihash"
-	"github.com/ucan-wg/go-ucan/didkey"
+	"github.com/selesy/go-ucan/didkey"
 )
 
 // ErrInvalidToken indicates an access token is invalid
@@ -178,6 +180,21 @@ func NewPrivKeySource(privKey crypto.PrivKey) (Source, error) {
 			return nil, fmt.Errorf("getting raw public key bytes: %w", err)
 		}
 		verifyKey = ed25519.PublicKey(rawPubBytes)
+	case crypto.Secp256k1:
+		methodStr = "Secp256k1"
+		signKey, err = crypto.UnmarshalSecp256k1PrivateKey(rawPrivBytes)
+		if err != nil {
+			return nil, fmt.Errorf("getting secp256k1 private key")
+		}
+		rawPubBytes, err := privKey.GetPublic().Raw()
+		if err != nil {
+			return nil, fmt.Errorf("getting raw pulic key bytes: %w", err)
+		}
+		pubKey, err := crypto.UnmarshalSecp256k1PublicKey(rawPubBytes)
+		if err != nil {
+			return nil, fmt.Errorf("getting raw pulic key bytes: %w", err)
+		}
+		verifyKey = pubKey
 	default:
 		return nil, fmt.Errorf("unsupported key type for token creation: %q", keyType)
 	}
@@ -187,6 +204,10 @@ func NewPrivKeySource(privKey crypto.PrivKey) (Source, error) {
 		return nil, err
 	}
 
+	jwt.RegisterSigningMethod("Secp256k1", func() jwt.SigningMethod {
+		return &signingMethodSecp256k1{}
+	})
+
 	return &pkSource{
 		pk:            privKey,
 		signingMethod: jwt.GetSigningMethod(methodStr),
@@ -194,6 +215,67 @@ func NewPrivKeySource(privKey crypto.PrivKey) (Source, error) {
 		signKey:       signKey,
 		issuerDID:     issuerDID,
 	}, nil
+}
+
+var _ jwt.SigningMethod = (*signingMethodSecp256k1)(nil)
+
+type signingMethodSecp256k1 struct{}
+
+func (*signingMethodSecp256k1) Alg() string {
+	return "Secp256k1"
+}
+
+func (*signingMethodSecp256k1) Verify(signingString, signature string, key interface{}) error {
+
+	// Get the key
+	// var pubKey crypto.PubKey
+	var pubKey crypto.Secp256k1PublicKey
+	switch k := key.(type) {
+	// case crypto.Secp256k1PublicKey:
+	// 	pubKey = k
+	// case crypto.PubKey:
+	// 	pubKey = k
+	case *secp256k1.PublicKey:
+		pubKey = crypto.Secp256k1PublicKey(corecrypto.Secp256k1PublicKey(*k))
+	default:
+		return fmt.Errorf("Secp256k1 verify expects crypto.Secp256k1PublicKey")
+	}
+
+	sig, err := jwt.DecodeSegment(signature)
+	if err != nil {
+		return err
+	}
+
+	ok, err := pubKey.Verify([]byte(signingString), []byte(sig))
+	if err != nil {
+		return fmt.Errorf("Secp256k1 verification failed")
+	}
+
+	if !ok {
+		return fmt.Errorf("Secp256k1 could not verify the signature")
+	}
+
+	return nil
+}
+
+func (*signingMethodSecp256k1) Sign(signingString string, key interface{}) (string, error) {
+	// Get the key
+	var privKey crypto.Secp256k1PrivateKey
+	switch k := key.(type) {
+	case *secp256k1.PrivateKey:
+		privKey = crypto.Secp256k1PrivateKey(corecrypto.Secp256k1PrivateKey(*k))
+	case *crypto.Secp256k1PrivateKey:
+		privKey = *k
+	default:
+		return "", fmt.Errorf("Secp256k1 sign expects crypto.Secp256k1PrivateKey")
+	}
+
+	sig, err := privKey.Sign([]byte(signingString))
+	if err != nil {
+		return "", err
+	}
+
+	return jwt.EncodeSegment(sig), nil
 }
 
 func (a *pkSource) NewOriginToken(audienceDID string, att Attenuations, fct []Fact, nbf, exp time.Time) (*Token, error) {

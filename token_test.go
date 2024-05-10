@@ -2,13 +2,14 @@ package ucan_test
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/libp2p/go-libp2p-core/crypto"
-	"github.com/ucan-wg/go-ucan"
+	"github.com/selesy/go-ucan"
 )
 
 const (
@@ -100,6 +101,37 @@ func TestED25519PrivKeySource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	audienceDID, err := ucan.DIDStringFromPublicKey(keyOne.GetPublic())
+	if err != nil {
+		panic(err)
+	}
+
+	zero := time.Time{}
+
+	// create a root UCAN
+	origin, err := source.NewOriginToken(audienceDID, nil, nil, zero, zero)
+	if err != nil {
+		panic(err)
+	}
+
+	if _, err = origin.CID(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSecp256k1PrivKeySource(t *testing.T) {
+	keyOne, _, err := crypto.GenerateSecp256k1Key(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	source, err := ucan.NewPrivKeySource(keyOne)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Log(source)
 
 	audienceDID, err := ucan.DIDStringFromPublicKey(keyOne.GetPublic())
 	if err != nil {
